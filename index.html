@@ -289,6 +289,104 @@
       letter-spacing: 5px;
     }
 
+    /* Кнопка мини-игры */
+    .game-button-container {
+      position: absolute;
+      top: 30px;
+      width: 100%;
+      display: flex;
+      justify-content: center;
+      z-index: 10;
+    }
+
+    .game-button {
+      padding: 12px 25px;
+      font-size: 1.1rem;
+      color: white;
+      text-decoration: none;
+      background: linear-gradient(90deg, #6a11cb, #2575fc);
+      border-radius: 25px;
+      font-weight: bold;
+      letter-spacing: 2px;
+      transition: 0.4s;
+      box-shadow: 0 0 15px rgba(106, 17, 203, 0.6);
+      cursor: pointer;
+      border: none;
+    }
+
+    .game-button:hover {
+      transform: scale(1.1);
+      box-shadow: 0 0 25px rgba(106, 17, 203, 0.9);
+    }
+
+    /* Модальное окно игры */
+    .game-modal {
+      display: none;
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(0, 0, 0, 0.8);
+      z-index: 100;
+      justify-content: center;
+      align-items: center;
+    }
+
+    .game-container {
+      position: relative;
+      width: 360px;
+      height: 640px;
+      background: #87CEEB;
+      border-radius: 10px;
+      overflow: hidden;
+      box-shadow: 0 0 30px rgba(255, 255, 255, 0.2);
+    }
+
+    #gameCanvas {
+      width: 100%;
+      height: 100%;
+    }
+
+    .game-ui {
+      position: absolute;
+      top: 20px;
+      width: 100%;
+      text-align: center;
+      color: white;
+      font-size: 24px;
+      font-weight: bold;
+      text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.5);
+      z-index: 10;
+    }
+
+    .game-start {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      background: rgba(0, 0, 0, 0.7);
+      color: white;
+      padding: 20px;
+      border-radius: 10px;
+      text-align: center;
+      z-index: 10;
+    }
+
+    .close-game {
+      position: absolute;
+      top: 10px;
+      right: 10px;
+      background: rgba(0, 0, 0, 0.7);
+      color: white;
+      border: none;
+      width: 30px;
+      height: 30px;
+      border-radius: 50%;
+      cursor: pointer;
+      z-index: 10;
+    }
+
     /* Адаптивность */
     @media (max-width: 768px) {
       .title {
@@ -326,6 +424,11 @@
       .money-big {
         width: 35px;
         height: 18px;
+      }
+      
+      .game-container {
+        width: 300px;
+        height: 500px;
       }
     }
   </style>
@@ -365,11 +468,380 @@
     </div>
   </div>
 
+  <div class="game-button-container">
+    <button class="game-button">MINI GAME</button>
+  </div>
+
   <div class="button-container">
     <div class="join-text">JOIN US</div>
     <a href="ВСТАВЬ_СЮДА_ССЫЛКУ" class="x-button">
       <i class="fab fa-twitter"></i> X COMMUNITY
     </a>
   </div>
+
+  <!-- Модальное окно игры -->
+  <div class="game-modal" id="gameModal">
+    <div class="game-container">
+      <button class="close-game" id="closeGame">×</button>
+      <canvas id="gameCanvas" width="360" height="640"></canvas>
+      <div class="game-ui" id="score">Score: 0</div>
+      <div class="game-start" id="gameStart">
+        <h2>FLAPPY BIRD</h2>
+        <p>Click or press SPACE to fly</p>
+        <p>Get 5 points to transform!</p>
+        <button id="startButton">START GAME</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // Элементы игры
+    const gameModal = document.getElementById('gameModal');
+    const gameCanvas = document.getElementById('gameCanvas');
+    const ctx = gameCanvas.getContext('2d');
+    const scoreElement = document.getElementById('score');
+    const gameStart = document.getElementById('gameStart');
+    const startButton = document.getElementById('startButton');
+    const closeGame = document.getElementById('closeGame');
+    const gameButton = document.querySelector('.game-button');
+
+    // Переменные игры
+    let gameRunning = false;
+    let score = 0;
+    let frames = 0;
+    let transformation = false;
+
+    // Изображения (используем те же, что и на основном сайте)
+    const darkImage = new Image();
+    darkImage.src = 'dark.png';
+    
+    const brightImage = new Image();
+    brightImage.src = 'bright.png';
+
+    // Игрок
+    const player = {
+      x: 50,
+      y: 150,
+      width: 40,
+      height: 30,
+      velocity: 0,
+      gravity: 0.2, // Уменьшена гравитация для более плавного падения
+      jump: -7, // Уменьшена сила прыжка для более плавного управления
+      
+      draw: function() {
+        if (transformation) {
+          // После трансформации используем яркое изображение
+          ctx.drawImage(brightImage, this.x, this.y, this.width, this.height);
+        } else {
+          // До трансформации используем темное изображение
+          ctx.drawImage(darkImage, this.x, this.y, this.width, this.height);
+        }
+      },
+      
+      update: function() {
+        this.velocity += this.gravity;
+        this.y += this.velocity;
+        
+        // Проверка столкновения с землей
+        if (this.y + this.height >= gameCanvas.height - 80) {
+          this.y = gameCanvas.height - 80 - this.height;
+          gameOver();
+        }
+        
+        // Проверка столкновения с потолком
+        if (this.y <= 0) {
+          this.y = 0;
+          this.velocity = 0;
+        }
+      },
+      
+      flap: function() {
+        this.velocity = this.jump;
+      }
+    };
+
+    // Трубы с красивой текстурой
+    const pipes = {
+      position: [],
+      gap: 220, // Увеличили зазор для легкости
+      minYPos: 50, // Минимальная высота верхней трубы
+      maxYPos: 280, // Максимальная высота верхней трубы
+      dx: 1.5, // Замедлили движение труб
+      width: 60,
+      
+      draw: function() {
+        for (let i = 0; i < this.position.length; i++) {
+          let p = this.position[i];
+          
+          // Текстуры для труб
+          if (transformation) {
+            // Красивые цветные трубы после трансформации
+            this.drawColoredPipe(p.x, p.y, p.width, p.height, true); // Верхняя труба
+            this.drawColoredPipe(p.x, p.y + p.height + this.gap, p.width, gameCanvas.height, false); // Нижняя труба
+          } else {
+            // Стильные серые трубы до трансформации
+            this.drawGrayPipe(p.x, p.y, p.width, p.height, true); // Верхняя труба
+            this.drawGrayPipe(p.x, p.y + p.height + this.gap, p.width, gameCanvas.height, false); // Нижняя труба
+          }
+        }
+      },
+      
+      // Рисуем цветную трубу с текстурой
+      drawColoredPipe: function(x, y, width, height, isTop) {
+        // Основной цвет трубы
+        const pipeColor = isTop ? '#388E3C' : '#2E7D32';
+        const highlightColor = '#4CAF50';
+        const shadowColor = '#1B5E20';
+        
+        // Основное тело трубы
+        ctx.fillStyle = pipeColor;
+        ctx.fillRect(x, y, width, height);
+        
+        // Добавляем текстуру - полосы
+        ctx.fillStyle = highlightColor;
+        for (let i = 0; i < height; i += 15) {
+          ctx.fillRect(x, y + i, width, 3);
+        }
+        
+        // Бордюр
+        ctx.fillStyle = shadowColor;
+        ctx.fillRect(x, y, width, 5);
+        if (!isTop) {
+          ctx.fillRect(x, y + height - 5, width, 5);
+        }
+        
+        // Внутренняя тень для объема
+        ctx.fillStyle = 'rgba(0, 0, 0, 0.2)';
+        ctx.fillRect(x, y, 3, height);
+        
+        // Внешняя подсветка
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.1)';
+        ctx.fillRect(x + width - 3, y, 3, height);
+      },
+      
+      // Рисуем серую трубу с текстурой
+      drawGrayPipe: function(x, y, width, height, isTop) {
+        // Основной цвет трубы
+        const pipeColor = isTop ? '#555' : '#444';
+        const highlightColor = '#666';
+        const shadowColor = '#333';
+        
+        // Основное тело трубы
+        ctx.fillStyle = pipeColor;
+        ctx.fillRect(x, y, width, height);
+        
+        // Добавляем текстуру - полосы
+        ctx.fillStyle = highlightColor;
+        for (let i = 0; i < height; i += 15) {
+          ctx.fillRect(x, y + i, width, 3);
+        }
+        
+        // Бордюр
+        ctx.fillStyle = shadowColor;
+        ctx.fillRect(x, y, width, 5);
+        if (!isTop) {
+          ctx.fillRect(x, y + height - 5, width, 5);
+        }
+        
+        // Внутренняя тень для объема
+        ctx.fillStyle = 'rgba(0, 0, 0, 0.3)';
+        ctx.fillRect(x, y, 3, height);
+        
+        // Внешняя подсветка
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.1)';
+        ctx.fillRect(x + width - 3, y, 3, height);
+      },
+      
+      update: function() {
+        // Генерируем новые трубы каждые 150 кадров (реже, чем было)
+        if (frames % 150 === 0) {
+          const pipeHeight = this.minYPos + Math.random() * (this.maxYPos - this.minYPos);
+          
+          this.position.push({
+            x: gameCanvas.width,
+            y: -pipeHeight, // Отрицательное значение, чтобы труба появлялась сверху
+            width: this.width,
+            height: 300,
+            passed: false
+          });
+        }
+        
+        for (let i = 0; i < this.position.length; i++) {
+          let p = this.position[i];
+          p.x -= this.dx;
+          
+          // Проверка столкновения
+          if (player.x + player.width > p.x && player.x < p.x + p.width) {
+            // Столкновение с верхней трубой
+            if (player.y < p.y + p.height) {
+              gameOver();
+            }
+            // Столкновение с нижней трубой
+            if (player.y + player.height > p.y + p.height + this.gap) {
+              gameOver();
+            }
+          }
+          
+          // Добавление очков
+          if (p.x + p.width <= player.x && !p.passed) {
+            score++;
+            scoreElement.textContent = `Score: ${score}`;
+            p.passed = true;
+            
+            // Трансформация после 5 очков
+            if (score >= 5 && !transformation) {
+              transformation = true;
+              // Меняем фон на цветной
+              document.querySelector('.game-container').style.background = 'linear-gradient(to bottom, #87CEEB 0%, #98D8F0 30%, #B4E8A8 70%, #7BCF5C 100%)';
+            }
+          }
+          
+          // Удаление труб за пределами экрана
+          if (p.x + p.width <= 0) {
+            this.position.shift();
+          }
+        }
+      }
+    };
+
+    // Фон
+    const background = {
+      draw: function() {
+        if (transformation) {
+          // Цветной фон после трансформации
+          ctx.fillStyle = '#87CEEB';
+          ctx.fillRect(0, 0, gameCanvas.width, gameCanvas.height);
+          
+          // Солнце
+          ctx.fillStyle = '#FFEB3B';
+          ctx.beginPath();
+          ctx.arc(300, 80, 40, 0, Math.PI * 2);
+          ctx.fill();
+          
+          // Облака
+          ctx.fillStyle = 'rgba(255, 255, 255, 0.8)';
+          ctx.beginPath();
+          ctx.arc(100, 80, 20, 0, Math.PI * 2);
+          ctx.arc(130, 70, 25, 0, Math.PI * 2);
+          ctx.arc(160, 80, 20, 0, Math.PI * 2);
+          ctx.fill();
+          
+          // Земля
+          ctx.fillStyle = '#4CAF50';
+          ctx.fillRect(0, gameCanvas.height - 80, gameCanvas.width, 80);
+          
+          // Трава на земле
+          ctx.fillStyle = '#2E7D32';
+          for (let i = 0; i < gameCanvas.width; i += 10) {
+            ctx.fillRect(i, gameCanvas.height - 80, 5, 10);
+          }
+        } else {
+          // Серый фон до трансформации
+          ctx.fillStyle = '#2d2d2d';
+          ctx.fillRect(0, 0, gameCanvas.width, gameCanvas.height);
+          
+          // Луна
+          ctx.fillStyle = '#888';
+          ctx.beginPath();
+          ctx.arc(300, 80, 30, 0, Math.PI * 2);
+          ctx.fill();
+          
+          // Звезды
+          ctx.fillStyle = '#666';
+          for (let i = 0; i < 10; i++) {
+            ctx.beginPath();
+            ctx.arc(50 + i * 30, 50 + (i % 3) * 20, 2, 0, Math.PI * 2);
+            ctx.fill();
+          }
+          
+          // Земля
+          ctx.fillStyle = '#1b1b1b';
+          ctx.fillRect(0, gameCanvas.height - 80, gameCanvas.width, 80);
+        }
+      }
+    };
+
+    // Игровой цикл
+    function gameLoop() {
+      if (!gameRunning) return;
+      
+      // Очистка canvas
+      ctx.clearRect(0, 0, gameCanvas.width, gameCanvas.height);
+      
+      // Отрисовка фона
+      background.draw();
+      
+      // Обновление и отрисовка труб
+      pipes.update();
+      pipes.draw();
+      
+      // Обновление и отрисовка игрока
+      player.update();
+      player.draw();
+      
+      frames++;
+      requestAnimationFrame(gameLoop);
+    }
+
+    // Начало игры
+    function startGame() {
+      gameRunning = true;
+      score = 0;
+      frames = 0;
+      transformation = false;
+      pipes.position = [];
+      player.y = 150;
+      player.velocity = 0;
+      scoreElement.textContent = `Score: ${score}`;
+      document.querySelector('.game-container').style.background = '#2d2d2d';
+      gameStart.style.display = 'none';
+      gameLoop();
+    }
+
+    // Конец игры
+    function gameOver() {
+      gameRunning = false;
+      gameStart.style.display = 'block';
+      gameStart.innerHTML = `
+        <h2>GAME OVER</h2>
+        <p>Your score: ${score}</p>
+        <button id="restartButton">PLAY AGAIN</button>
+      `;
+      document.getElementById('restartButton').addEventListener('click', startGame);
+    }
+
+    // Управление
+    gameCanvas.addEventListener('click', function() {
+      if (gameRunning) {
+        player.flap();
+      }
+    });
+
+    document.addEventListener('keydown', function(e) {
+      if (e.code === 'Space' && gameRunning) {
+        player.flap();
+      }
+    });
+
+    // Открытие/закрытие игры
+    gameButton.addEventListener('click', function() {
+      gameModal.style.display = 'flex';
+    });
+
+    closeGame.addEventListener('click', function() {
+      gameModal.style.display = 'none';
+      gameRunning = false;
+    });
+
+    startButton.addEventListener('click', startGame);
+
+    // Закрытие модального окна при клике вне его
+    gameModal.addEventListener('click', function(e) {
+      if (e.target === gameModal) {
+        gameModal.style.display = 'none';
+        gameRunning = false;
+      }
+    });
+  </script>
 </body>
 </html>
