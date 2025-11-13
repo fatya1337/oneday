@@ -1,0 +1,282 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Employment Cult — Hats Overlay</title>
+<style>
+/* minimal styles */
+body{font-family:Segoe UI,Arial;margin:0;background:#111;color:#fff;display:flex;align-items:flex-start;justify-content:center;padding:20px}
+.container{max-width:1100px;width:100%;background:#1b1b2f;padding:20px;border-radius:12px}
+.header{text-align:center}
+.preview{display:flex;gap:20px;flex-wrap:wrap;align-items:flex-start}
+.left{flex:1;min-width:320px}
+.canvas-wrap{position:relative;background:#222;border-radius:8px;padding:10px}
+#main-canvas{background:#111;display:block;max-width:800px;width:100%;border-radius:6px}
+.hat-layer{position:absolute;top:0;left:0;cursor:grab;touch-action:none}
+.controls{margin-top:10px;display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.hat-thumb{width:90px;height:90px;border-radius:8px;overflow:hidden;display:inline-block;border:2px solid transparent;cursor:pointer}
+.hat-thumb.active{border-color:#ffcc00}
+button, input[type=range]{padding:8px 12px;border-radius:8px;border:none}
+.footer{margin-top:12px;color:#ddd;font-size:14px}
+.upload-btn input{display:none}
+.upload-btn{background:#2b2b3b;color:#fff;padding:8px 12px;border-radius:8px;cursor:pointer;display:inline-block}
+</style>
+</head>
+<body>
+<div class="container">
+  <div class="header">
+    <h1>Employment Cult — Hats Overlay</h1>
+    <p>Upload your photo, select a hat, drag it to the desired position, then download the result.</p>
+  </div>
+
+  <div class="preview">
+    <div class="left">
+      <div class="canvas-wrap" id="canvas-wrap">
+        <canvas id="main-canvas" width="800" height="800"></canvas>
+        <img id="hat-img" class="hat-layer" style="display:none;width:250px;left:275px;top:40px;">
+      </div>
+
+      <div class="controls">
+        <label class="upload-btn">
+          <input type="file" id="file-input" accept="image/*">
+          Upload Photo
+        </label>
+        <button id="download-btn" style="background:#ff8c00;color:#111">Download Result</button>
+        <label style="display:flex;align-items:center;gap:8px">Scale <input id="scale" type="range" min="0.3" max="2.0" step="0.01" value="1"></label>
+        <label style="display:flex;align-items:center;gap:8px">Rotation <input id="rotate" type="range" min="-60" max="60" step="1" value="0"></label>
+      </div>
+
+      <div class="footer">
+        <strong>Tips:</strong> Drag the hat with mouse/touch; mouse wheel - zoom in/out; use scale and rotation sliders.
+      </div>
+    </div>
+
+    <div class="right" style="width:320px">
+      <h3>Select a Hat</h3>
+      <div id="hats-list">
+        <!-- Hat thumbnails will be added here by JavaScript -->
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+// Hat images - replace these with your actual image paths or base64 data
+const hatData = [
+  { name: "Hat 1", src: "hat1.png" },
+  { name: "Hat 2", src: "hat2.png" },
+  { name: "Hat 3", src: "hat3.png" }
+];
+
+const canvas = document.getElementById('main-canvas');
+const ctx = canvas.getContext('2d');
+const hatImg = document.getElementById('hat-img');
+const hatsList = document.getElementById('hats-list');
+const fileInput = document.getElementById('file-input');
+const downloadBtn = document.getElementById('download-btn');
+const scaleSlider = document.getElementById('scale');
+const rotateSlider = document.getElementById('rotate');
+
+let bgImage = new Image();
+let currentHatIndex = 0;
+let isDragging = false;
+let dragStartX, dragStartY;
+let hatX = 275, hatY = 40;
+let hatScale = 1;
+let hatRotation = 0;
+
+// Initialize hat thumbnails
+function initHats() {
+  hatsList.innerHTML = '';
+  hatData.forEach((hat, index) => {
+    const thumb = document.createElement('div');
+    thumb.className = `hat-thumb ${index === 0 ? 'active' : ''}`;
+    thumb.dataset.index = index;
+    
+    const img = document.createElement('img');
+    img.src = hat.src;
+    img.alt = hat.name;
+    img.style.width = '100%';
+    img.style.height = '100%';
+    img.style.objectFit = 'contain';
+    
+    thumb.appendChild(img);
+    thumb.addEventListener('click', () => selectHat(index));
+    hatsList.appendChild(thumb);
+  });
+}
+
+// Select a hat
+function selectHat(index) {
+  currentHatIndex = index;
+  
+  // Update active thumbnail
+  document.querySelectorAll('.hat-thumb').forEach((thumb, i) => {
+    thumb.classList.toggle('active', i === index);
+  });
+  
+  // Update hat image
+  hatImg.src = hatData[index].src;
+  hatImg.style.display = 'block';
+  
+  // Redraw canvas
+  drawCanvas();
+}
+
+// Draw the canvas with background and hat
+function drawCanvas() {
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  
+  // Draw background image if loaded
+  if (bgImage.complete && bgImage.naturalWidth > 0) {
+    ctx.drawImage(bgImage, 0, 0, canvas.width, canvas.height);
+  }
+}
+
+// Handle file upload
+fileInput.addEventListener('change', (e) => {
+  const file = e.target.files[0];
+  if (!file) return;
+  
+  const reader = new FileReader();
+  reader.onload = (ev) => {
+    bgImage = new Image();
+    bgImage.onload = () => {
+      const maxW = 1000;
+      const w = bgImage.width;
+      const h = bgImage.height;
+      const scale = Math.min(maxW / w, 1);
+      canvas.width = Math.round(w * scale);
+      canvas.height = Math.round(h * scale);
+      
+      // Set default hat position (top center)
+      const defaultHatWidth = 250;
+      hatImg.style.left = (canvas.width / 2 - defaultHatWidth / 2) + 'px';
+      hatImg.style.top = '40px';
+      hatX = parseFloat(hatImg.style.left);
+      hatY = parseFloat(hatImg.style.top);
+      
+      drawCanvas();
+    };
+    bgImage.src = ev.target.result;
+  };
+  reader.readAsDataURL(file);
+});
+
+// Handle hat dragging
+hatImg.addEventListener('mousedown', startDrag);
+hatImg.addEventListener('touchstart', startDrag);
+
+function startDrag(e) {
+  e.preventDefault();
+  isDragging = true;
+  
+  if (e.type === 'mousedown') {
+    dragStartX = e.clientX - hatX;
+    dragStartY = e.clientY - hatY;
+    document.addEventListener('mousemove', drag);
+    document.addEventListener('mouseup', stopDrag);
+  } else {
+    const touch = e.touches[0];
+    dragStartX = touch.clientX - hatX;
+    dragStartY = touch.clientY - hatY;
+    document.addEventListener('touchmove', drag);
+    document.addEventListener('touchend', stopDrag);
+  }
+}
+
+function drag(e) {
+  if (!isDragging) return;
+  
+  let clientX, clientY;
+  if (e.type === 'mousemove') {
+    clientX = e.clientX;
+    clientY = e.clientY;
+  } else {
+    clientX = e.touches[0].clientX;
+    clientY = e.touches[0].clientY;
+  }
+  
+  const rect = canvas.getBoundingClientRect();
+  hatX = clientX - dragStartX - rect.left;
+  hatY = clientY - dragStartY - rect.top;
+  
+  hatImg.style.left = hatX + 'px';
+  hatImg.style.top = hatY + 'px';
+}
+
+function stopDrag() {
+  isDragging = false;
+  document.removeEventListener('mousemove', drag);
+  document.removeEventListener('mouseup', stopDrag);
+  document.removeEventListener('touchmove', drag);
+  document.removeEventListener('touchend', stopDrag);
+}
+
+// Handle scale and rotation
+scaleSlider.addEventListener('input', (e) => {
+  hatScale = parseFloat(e.target.value);
+  updateHatTransform();
+});
+
+rotateSlider.addEventListener('input', (e) => {
+  hatRotation = parseFloat(e.target.value);
+  updateHatTransform();
+});
+
+function updateHatTransform() {
+  hatImg.style.transform = `scale(${hatScale}) rotate(${hatRotation}deg)`;
+}
+
+// Handle mouse wheel for zoom
+hatImg.addEventListener('wheel', (e) => {
+  e.preventDefault();
+  hatScale += e.deltaY * -0.01;
+  hatScale = Math.min(Math.max(0.3, hatScale), 2.0);
+  scaleSlider.value = hatScale;
+  updateHatTransform();
+});
+
+// Download result
+downloadBtn.addEventListener('click', () => {
+  // Create a temporary canvas to combine images
+  const tempCanvas = document.createElement('canvas');
+  tempCanvas.width = canvas.width;
+  tempCanvas.height = canvas.height;
+  const tempCtx = tempCanvas.getContext('2d');
+  
+  // Draw background
+  tempCtx.drawImage(bgImage, 0, 0, tempCanvas.width, tempCanvas.height);
+  
+  // Draw hat with transformations
+  tempCtx.save();
+  tempCtx.translate(hatX + (parseFloat(hatImg.style.width) * hatScale) / 2, 
+                    hatY + (parseFloat(hatImg.style.width) * hatScale) / 2);
+  tempCtx.rotate(hatRotation * Math.PI / 180);
+  tempCtx.scale(hatScale, hatScale);
+  tempCtx.drawImage(hatImg, -parseFloat(hatImg.style.width) / 2, -parseFloat(hatImg.style.width) / 2, 
+                    parseFloat(hatImg.style.width), parseFloat(hatImg.style.width));
+  tempCtx.restore();
+  
+  // Create download link
+  const link = document.createElement('a');
+  link.download = 'employment-cult-hat-result.png';
+  link.href = tempCanvas.toDataURL('image/png');
+  link.click();
+});
+
+// Initialize the app
+initHats();
+selectHat(0); // Select first hat by default
+
+// Draw initial canvas
+ctx.fillStyle = '#333';
+ctx.fillRect(0, 0, canvas.width, canvas.height);
+ctx.fillStyle = '#fff';
+ctx.font = '16px Arial';
+ctx.textAlign = 'center';
+ctx.fillText('Upload a photo to get started', canvas.width / 2, canvas.height / 2);
+</script>
+</body>
+</html>
